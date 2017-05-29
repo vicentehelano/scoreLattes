@@ -1,2 +1,2 @@
 # scoreLattes
-Computes scores for Lattes curricula.
+Computes scores from Lattes curricula.
