@@ -101,35 +101,32 @@ class Score(object):
 
         # Calcula pontuação do currículo
         self.__dados_gerais()
-        self.__formacao_academica_titulacao() # TODO: Há um erro em alguns curriculos
-        #self.__projetos_de_pesquisa()
+        self.__formacao_academica_titulacao()
+        self.__projetos_de_pesquisa()
 #        self.__producao_bibliografica()
 
     def __dados_gerais(self):
         if 'NUMERO-IDENTIFICADOR' not in self.__curriculo.attrib:
-#            print str("Currículo inválido: ID Lattes inexistente.").decode("utf-8")
             raise ValueError
         self.__numero_identificador = self.__curriculo.attrib['NUMERO-IDENTIFICADOR']
 
         dados = self.__curriculo.find('DADOS-GERAIS')
         self.__nome_completo = dados.attrib['NOME-COMPLETO']
-        #print self.__numero_identificador + ', ' + self.__nome_completo
 
-    # TODO: *********** É NECESSÁRIO VERIFICAR SE FOI CONCLUÍDO O CURSO *************
     def __formacao_academica_titulacao(self):
         dados = self.__curriculo.find('DADOS-GERAIS')
         formacao = dados.find('FORMACAO-ACADEMICA-TITULACAO')
         if formacao is None:
             return
-    # TODO: *********** É NECESSÁRIO VERIFICAR SE FOI CONCLUÍDO O CURSO *************
         barema = {'POS-DOUTORADO': 10, 'LIVRE-DOCENCIA': 8, 'DOUTORADO': 7, 'MESTRADO': 3}
         for key,value in barema.items():
             result = formacao.find(key)
             if result is None:
                 continue
-            if result.attrib['STATUS-DO-CURSO'] == 'CONCLUIDO':
+            if key == 'LIVRE-DOCENCIA': # neste caso, não há STATUS-DO-CURSO
                 self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
-    # TODO: *********** É NECESSÁRIO VERIFICAR SE FOI CONCLUÍDO O CURSO *************
+            elif result.attrib['STATUS-DO-CURSO'] == 'CONCLUIDO':
+                self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
         # Calcula a pontuação total da formação acadêmica
         self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO'] = sum(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'].values())
             
@@ -150,41 +147,45 @@ class Score(object):
                 if projetos is None:
                     continue
 
+                # O ano de início da participação em um projeto
+                inicio_part = int(participacao.attrib['ANO-INICIO'])
+
                 for projeto in projetos:
-                    # Verifica se o projeto foi iniciado no período estipulado pelo edital
-                    print self.__numero_identificador
-                    if int(projeto.attrib['ANO-INICIO']) < self.__ano_inicio:
-                        continue
+                    # Ignorar projeto ou participação em projeto iniciados antes do período estipulado
+                    if projeto.attrib['ANO-INICIO'] != "":
+                        if int(projeto.attrib['ANO-INICIO']) < self.__ano_inicio:
+                            continue
+                    else:
+                        if inicio_part < self.__ano_inicio:
+                            continue
                       
-                    # Verifica se o proponente é o coordenador do projeto
+                    # Ignorar se o proponente não for o coordenador do projeto
                     equipe = (projeto.find('EQUIPE-DO-PROJETO')).find('INTEGRANTES-DO-PROJETO')
                     if equipe.attrib['FLAG-RESPONSAVEL'] != str('SIM'):
                         continue
 
                     # Verifica se o projeto é financiado
-                    codigo_ufca = 'JI7500000002'
-                    codigo_ufc  = '008900000002'
                     financiamento = projeto.find('FINANCIADORES-DO-PROJETO')
                     if financiamento is None:
                         continue
 
-                    # Verifica se há órgão financiador externo
+                    # Verifica se há órgão financiador externo, diferente de UFC e UFCA
+                    codigos = ['', 'JI7500000002', '001500000997', '008900000002']
                     financiadores = financiamento.findall('FINANCIADOR-DO-PROJETO')
-                    tem_externo = False
+                    fomento_externo = False
                     for financiador in financiadores:
-                        if financiador.attrib['CODIGO-INSTITUICAO'] == "":
-                            continue
-
-                        if financiador.attrib['CODIGO-INSTITUICAO'] != codigo_ufc or financiador.attrib['CODIGO-INSTITUICAO'] != codigo_ufca:
-                            tem_externo = True
+                        if financiador.attrib['CODIGO-INSTITUICAO'] not in codigos:
+                            fomento_externo = True
                             break
-                    if not tem_externo:
+                    if not fomento_externo:
                         continue
                     
                     if projeto.attrib['NATUREZA'] == 'PESQUISA':
-                        self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['PESQUISA'] += 1
+                        if self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['PESQUISA'] <= 6: # máximo de 8 pontos
+                            self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['PESQUISA'] += 2
                     elif projeto.attrib['NATUREZA'] == 'DESENVOLVIMENTO':
-                        self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['DESENVOLVIMENT0'] += 1
+                        if self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['DESENVOLVIMENT0'] <= 6: # máximo de 8 pontos
+                            self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['DESENVOLVIMENT0'] += 2
 
         # Calcula a pontuação total dos projetos de pesquisa
         self.__pontuacao['PROJETO-DE-PESQUISA'] = sum(self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA'].values())
@@ -231,7 +232,7 @@ class Score(object):
         print self.__nome_completo
         print self.__numero_identificador
         print "FORMACAO-ACADEMICA-TITULACAO: ".decode("utf8") + str(self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO']).encode("utf-8")
-        #print "PROJETO-DE-PESQUISA:          ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
+        print "PROJETO-DE-PESQUISA:          ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
         print ''
 
 
