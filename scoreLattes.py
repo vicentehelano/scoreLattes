@@ -103,7 +103,7 @@ class Score(object):
         self.__dados_gerais()
         self.__formacao_academica_titulacao()
         self.__projetos_de_pesquisa()
-#        self.__producao_bibliografica()
+        self.__producao_bibliografica()
 
     def __dados_gerais(self):
         if 'NUMERO-IDENTIFICADOR' not in self.__curriculo.attrib:
@@ -151,12 +151,12 @@ class Score(object):
                 inicio_part = int(participacao.attrib['ANO-INICIO'])
 
                 for projeto in projetos:
-                    # Ignorar projeto ou participação em projeto iniciados antes do período estipulado
+                    # Ignorar projeto ou participação em projeto iniciados fora do período estipulado
                     if projeto.attrib['ANO-INICIO'] != "":
-                        if int(projeto.attrib['ANO-INICIO']) < self.__ano_inicio:
+                        if int(projeto.attrib['ANO-INICIO']) < self.__ano_inicio or int(projeto.attrib['ANO-INICIO']) > self.__ano_fim:
                             continue
                     else:
-                        if inicio_part < self.__ano_inicio:
+                        if inicio_part < self.__ano_inicio or inicio_part > self.__ano_fim:
                             continue
                       
                     # Ignorar se o proponente não for o coordenador do projeto
@@ -196,14 +196,18 @@ class Score(object):
             return
 
         self.__artigos_publicados(producao)
-        self.__trabalhos_em_eventos(producao)
+        #self.__trabalhos_em_eventos(producao)
 
     def __artigos_publicados(self, producao):
         artigos = producao.find('ARTIGOS-PUBLICADOS')
         if artigos is None:
             return
         for artigo in artigos.findall('ARTIGO-PUBLICADO'):
-            self.__artigos += 1
+            dados = artigo.find('DADOS-BASICOS-DO-ARTIGO')
+            ano = int(dados.attrib['ANO-DO-ARTIGO'])
+            if ano >= self.__ano_inicio and ano <= self.__ano_fim: # somente os artigos dirante o período estipulado
+                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['NAO-ENCONTRADO'] += 1
+        self.__artigos = sum(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'].values())
 
     def __trabalhos_em_eventos(self, producao):
         trabalhos = producao.find('TRABALHOS-EM-EVENTOS')
@@ -233,6 +237,7 @@ class Score(object):
         print self.__numero_identificador
         print "FORMACAO-ACADEMICA-TITULACAO: ".decode("utf8") + str(self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO']).encode("utf-8")
         print "PROJETO-DE-PESQUISA:          ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS:           ".decode("utf8") + str(self.__artigos).encode("utf-8")
         print ''
 
 
@@ -270,7 +275,7 @@ def main():
 
     tree = ET.parse(args[0])
     root = tree.getroot()
-    score = Score(root, 2012, 2017)
+    score = Score(root, 2012, 2016)
     score.sumario(ostream)
 
 # Main
