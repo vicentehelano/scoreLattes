@@ -102,7 +102,7 @@ class Score(object):
         # Calcula pontuação do currículo
         self.__dados_gerais()
         self.__formacao_academica_titulacao() # TODO: Há um erro em alguns curriculos
-        self.__projetos_de_pesquisa()
+        #self.__projetos_de_pesquisa()
 #        self.__producao_bibliografica()
 
     def __dados_gerais(self):
@@ -152,6 +152,7 @@ class Score(object):
 
                 for projeto in projetos:
                     # Verifica se o projeto foi iniciado no período estipulado pelo edital
+                    print self.__numero_identificador
                     if int(projeto.attrib['ANO-INICIO']) < self.__ano_inicio:
                         continue
                       
@@ -225,12 +226,13 @@ class Score(object):
             self.__trabalhos += 1
 
     def sumario(self, ostream):
-        print ''
         #print self.__tabela_de_qualificacao
         #print ''
         print self.__nome_completo
+        print self.__numero_identificador
         print "FORMACAO-ACADEMICA-TITULACAO: ".decode("utf8") + str(self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO']).encode("utf-8")
-        print "PROJETO-DE-PESQUISA:          ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
+        #print "PROJETO-DE-PESQUISA:          ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
+        print ''
 
 
 def main():
