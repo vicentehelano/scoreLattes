@@ -198,6 +198,7 @@ class Score(object):
         self.__artigos_publicados(producao)
         self.__trabalhos_em_eventos(producao)
         self.__livros_e_capitulos(producao)
+        self.__demais_tipos_de_producao(producao)
 
     ################ TODO: falta usar o Qualis #################
     def __artigos_publicados(self, producao):
@@ -250,6 +251,21 @@ class Score(object):
                     continue
                 self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO'] += 1
 
+    def __demais_tipos_de_producao(self, producao):
+        itens = producao.find('DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA')
+        if itens is None:
+            return
+        traducoes = itens.findall('TRADUCAO')
+        for traducao in traducoes:
+            ano = int(traducao.find('DADOS-BASICOS-DA-TRADUCAO').attrib['ANO'])
+            if ano < self.__ano_inicio or ano > self.__ano_fim: # skip out-of-allowed-period production
+                continue
+            if traducao.find('DETALHAMENTO-DA-TRADUCAO').attrib['NUMERO-DE-PAGINAS'] == "":
+                continue
+            paginas = int(traducao.find('DETALHAMENTO-DA-TRADUCAO').attrib['NUMERO-DE-PAGINAS'])
+            if paginas > 49: # número mínimo de páginas para livros publicados e traduções
+                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO'] += 1
+
     def sumario(self, ostream):
         #print self.__tabela_de_qualificacao
         #print ''
@@ -280,7 +296,8 @@ class Score(object):
         print "LIVROS-PUBLICADOS:                   ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO']['LIVRO_PUBLICADO']).encode("utf-8")
         print "LIVROS-ORGANIZADOS:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO']['LIVRO_ORGANIZADO_OU_EDICAO']).encode("utf-8")
         print "CAPITULO-DE-LIVRO-PUBLICADO:         ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO']).encode("utf-8")
-                    
+
+        print "TRADUCOES:                           ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO']).encode("utf-8")
         print ''
 
 
