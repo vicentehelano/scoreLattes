@@ -104,6 +104,7 @@ class Score(object):
         self.__formacao_academica_titulacao()
         self.__projetos_de_pesquisa()
         self.__producao_bibliografica()
+        self.__producao_tecnica()
 
     def __dados_gerais(self):
         if 'NUMERO-IDENTIFICADOR' not in self.__curriculo.attrib:
@@ -266,6 +267,57 @@ class Score(object):
             if paginas > 49: # número mínimo de páginas para livros publicados e traduções
                 self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO'] += 1
 
+    def __producao_tecnica(self):
+        producao = self.__curriculo.find('PRODUCAO-TECNICA')
+        if producao is None:
+            return
+
+        self.__softwares(producao)
+        self.__patentes(producao)
+        self.__produtos_tecnologicos(producao)
+        self.__processos_ou_tecnicas(producao)
+        self.__trabalho_tecnico(producao)
+
+    def __softwares(self, producao):
+        softwares = producao.findall('SOFTWARE')
+        if softwares is None:
+            return
+        for software in softwares:
+            dados = software.find('DADOS-BASICOS-DO-SOFTWARE')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+            elif self.__ano_inicio <= int(ano) <= self.__ano_fim: # somente os artigos dirante o período estipulado
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['SOFTWARE'] += 1
+
+    def __patentes(self, producao):
+        patentes = producao.findall('PATENTE')
+        if patentes is None:
+            return
+        for patente in patentes:
+            print 'PATENTE'
+            detalhamento = patente.find('DETALHAMENTO-DA-PATENTE')
+            registro = detalhamento.find('REGISTRO-OU-PATENTE')
+            deposito = (registro.attrib['DATA-PEDIDO-DE-DEPOSITO'])[4:]
+            concessao = (registro.attrib['DATA-DE-CONCESSAO'])[4:]
+            print deposito + ' <> ' + concessao
+            if concessao != "":
+                if self.__ano_inicio <= int(concessao) <= self.__ano_fim: # somente os artigos dirante o período estipulado
+                    self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA'] += 1
+            elif deposito != "":
+                if self.__ano_inicio <= int(deposito) <= self.__ano_fim: # somente os artigos dirante o período estipulado
+                    self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA'] += 1
+
+    def __produtos_tecnologicos(self, producao):
+        return 
+
+    def __processos_ou_tecnicas(self, producao):
+        return 
+
+    def __trabalho_tecnico(self, producao):
+        return 
+
+
     def sumario(self, ostream):
         #print self.__tabela_de_qualificacao
         #print ''
@@ -298,6 +350,10 @@ class Score(object):
         print "CAPITULO-DE-LIVRO-PUBLICADO:         ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO']).encode("utf-8")
 
         print "TRADUCOES:                           ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO']).encode("utf-8")
+
+        print "SOFTWARES:                           ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['SOFTWARE']).encode("utf-8")
+        print "PATENTES-DEPOSITADAS:                ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA']).encode("utf-8")
+        print "PATENTES-CONCEDIDAS:                 ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA']).encode("utf-8")
         print ''
 
 
