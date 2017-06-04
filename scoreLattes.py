@@ -295,27 +295,55 @@ class Score(object):
         if patentes is None:
             return
         for patente in patentes:
-            print 'PATENTE'
             detalhamento = patente.find('DETALHAMENTO-DA-PATENTE')
             registro = detalhamento.find('REGISTRO-OU-PATENTE')
             deposito = (registro.attrib['DATA-PEDIDO-DE-DEPOSITO'])[4:]
             concessao = (registro.attrib['DATA-DE-CONCESSAO'])[4:]
-            print deposito + ' <> ' + concessao
             if concessao != "":
-                if self.__ano_inicio <= int(concessao) <= self.__ano_fim: # somente os artigos dirante o período estipulado
+                if self.__ano_inicio <= int(concessao) <= self.__ano_fim:
                     self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA'] += 1
             elif deposito != "":
-                if self.__ano_inicio <= int(deposito) <= self.__ano_fim: # somente os artigos dirante o período estipulado
+                if self.__ano_inicio <= int(deposito) <= self.__ano_fim:
                     self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA'] += 1
 
     def __produtos_tecnologicos(self, producao):
-        return 
+        produtos = producao.findall('PRODUTO-TECNOLOGICO')
+        if produtos is None:
+            return
+        for produto in produtos:
+            dados = produto.find('DADOS-BASICOS-DO-PRODUTO-TECNOLOGICO')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO'] += 1
 
     def __processos_ou_tecnicas(self, producao):
-        return 
+        processos = producao.findall('PROCESSOS-OU-TECNICAS')
+        if processos is None:
+            return
+        for processo in processos:
+            dados = processo.find('DADOS-BASICOS-DO-PROCESSOS-OU-TECNICAS')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS'] += 1
 
     def __trabalho_tecnico(self, producao):
-        return 
+        trabalhos = producao.findall('TRABALHO-TECNICO')
+        if trabalhos is None:
+            return
+        for trabalho in trabalhos:
+            dados = trabalho.find('DADOS-BASICOS-DO-TRABALHO-TECNICO')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO'] += 1
 
 
     def sumario(self, ostream):
@@ -354,6 +382,9 @@ class Score(object):
         print "SOFTWARES:                           ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['SOFTWARE']).encode("utf-8")
         print "PATENTES-DEPOSITADAS:                ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA']).encode("utf-8")
         print "PATENTES-CONCEDIDAS:                 ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA']).encode("utf-8")
+        print "PRODUTOS-TECNOLOGICOS:               ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO']).encode("utf-8")
+        print "PROCESSOS-OU-TECNICAS:               ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS']).encode("utf-8")
+        print "TRABALHOS-TECNICOS:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO']).encode("utf-8")
         print ''
 
 
