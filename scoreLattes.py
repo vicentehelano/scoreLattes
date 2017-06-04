@@ -197,6 +197,7 @@ class Score(object):
 
         self.__artigos_publicados(producao)
         self.__trabalhos_em_eventos(producao)
+        self.__livros_e_capitulos(producao)
 
     ################ TODO: falta usar o Qualis #################
     def __artigos_publicados(self, producao):
@@ -221,6 +222,33 @@ class Score(object):
             abrangencia = trabalho.find('DETALHAMENTO-DO-TRABALHO').attrib['CLASSIFICACAO-DO-EVENTO']
             natureza = trabalho.find('DADOS-BASICOS-DO-TRABALHO').attrib['NATUREZA']
             self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS'][abrangencia][natureza] += 1
+
+    def __livros_e_capitulos(self, producao):
+        itens = producao.find('LIVROS-E-CAPITULOS')
+        if itens is None:
+            return
+        livros = itens.find('LIVROS-PUBLICADOS-OU-ORGANIZADOS')
+        if livros != None:
+            for livro in livros.findall('LIVRO-PUBLICADO-OU-ORGANIZADO'):
+                ano = int(livro.find('DADOS-BASICOS-DO-LIVRO').attrib['ANO'])
+                if ano < self.__ano_inicio or ano > self.__ano_fim: # skip out-of-allowed-period production
+                    continue
+                if livro.find('DETALHAMENTO-DO-LIVRO').attrib['NUMERO-DE-PAGINAS'] == "":
+                    continue
+                paginas = int(livro.find('DETALHAMENTO-DO-LIVRO').attrib['NUMERO-DE-PAGINAS'])
+                if paginas > 49: # número mínimo de páginas para livros publicados e traduções
+                    tipo = livro.find('DADOS-BASICOS-DO-LIVRO').attrib['TIPO']
+                    self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO'][tipo] += 1
+
+        capitulos = itens.find('CAPITULOS-DE-LIVROS-PUBLICADOS')
+        if capitulos != None:
+            for capitulo in capitulos.findall('CAPITULO-DE-LIVRO-PUBLICADO'):
+                if capitulo.find('DADOS-BASICOS-DO-CAPITULO').attrib['ANO'] == "":
+                    continue
+                ano = int(capitulo.find('DADOS-BASICOS-DO-CAPITULO').attrib['ANO'])
+                if ano < self.__ano_inicio or ano > self.__ano_fim: # skip out-of-allowed-period production
+                    continue
+                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO'] += 1
 
     def sumario(self, ostream):
         #print self.__tabela_de_qualificacao
@@ -249,6 +277,10 @@ class Score(object):
         print "TRABALHOS-RESUMOS-LOCAIS:            ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['LOCAL']['RESUMO']).encode("utf-8")
         print "TRABALHOS-RESUMOS-NAO-INFORMADO:     ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NAO_INFORMADO']['RESUMO']).encode("utf-8")
 
+        print "LIVROS-PUBLICADOS:                   ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO']['LIVRO_PUBLICADO']).encode("utf-8")
+        print "LIVROS-ORGANIZADOS:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO']['LIVRO_ORGANIZADO_OU_EDICAO']).encode("utf-8")
+        print "CAPITULO-DE-LIVRO-PUBLICADO:         ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO']).encode("utf-8")
+                    
         print ''
 
 
