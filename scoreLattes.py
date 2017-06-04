@@ -196,8 +196,9 @@ class Score(object):
             return
 
         self.__artigos_publicados(producao)
-        #self.__trabalhos_em_eventos(producao)
+        self.__trabalhos_em_eventos(producao)
 
+    ################ TODO: falta usar o Qualis #################
     def __artigos_publicados(self, producao):
         artigos = producao.find('ARTIGOS-PUBLICADOS')
         if artigos is None:
@@ -214,30 +215,40 @@ class Score(object):
         if trabalhos is None:
             return
         for trabalho in trabalhos.findall('TRABALHO-EM-EVENTOS'):
-            natureza = trabalho.find('DADOS-BASICOS-DO-TRABALHO').attrib['NATUREZA']
+            ano = int(trabalho.find('DADOS-BASICOS-DO-TRABALHO').attrib['ANO-DO-TRABALHO'])
+            if ano < self.__ano_inicio or ano > self.__ano_fim: # skip papers out-of-period
+                continue
             abrangencia = trabalho.find('DETALHAMENTO-DO-TRABALHO').attrib['CLASSIFICACAO-DO-EVENTO']
-            if natureza == 'RESUMO':
-                print 'resumo'
-                if abrangencia == 'INTERNACIONAL':
-                    print '  nacional'
-                elif abrangencia == 'NACIONAL':
-                    print '  nacional'
-                elif abrangencia == 'REGIONAL':
-                    print '  nacional'
-                elif abrangencia == 'LOCAL':
-                    print '  nacional'
-                else:
-                    print '  ' + abrangencia
-            self.__trabalhos += 1
+            natureza = trabalho.find('DADOS-BASICOS-DO-TRABALHO').attrib['NATUREZA']
+            self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS'][abrangencia][natureza] += 1
 
     def sumario(self, ostream):
         #print self.__tabela_de_qualificacao
         #print ''
         print self.__nome_completo
         print self.__numero_identificador
-        print "FORMACAO-ACADEMICA-TITULACAO: ".decode("utf8") + str(self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO']).encode("utf-8")
-        print "PROJETO-DE-PESQUISA:          ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
-        print "ARTIGOS-PUBLICADOS:           ".decode("utf8") + str(self.__artigos).encode("utf-8")
+        print "FORMACAO-ACADEMICA-TITULACAO:        ".decode("utf8") + str(self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO']).encode("utf-8")
+        print "PROJETO-DE-PESQUISA:                 ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS:                  ".decode("utf8") + str(self.__artigos).encode("utf-8")
+
+        print "TRABALHOS-COMPLETOS-INTERNACIONAIS:  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['INTERNACIONAL']['COMPLETO']).encode("utf-8")
+        print "TRABALHOS-COMPLETOS-NACIONAIS:       ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NACIONAL']['COMPLETO']).encode("utf-8")
+        print "TRABALHOS-COMPLETOS-REGIONAIS:       ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['REGIONAL']['COMPLETO']).encode("utf-8")
+        print "TRABALHOS-COMPLETOS-LOCAIS:          ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['LOCAL']['COMPLETO']).encode("utf-8")
+        print "TRABALHOS-COMPLETOS-NAO-INFORMADO:   ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NAO_INFORMADO']['COMPLETO']).encode("utf-8")
+
+        print "TRABALHOS-EXPANDIDOS-INTERNACIONAIS: ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['INTERNACIONAL']['RESUMO_EXPANDIDO']).encode("utf-8")
+        print "TRABALHOS-EXPANDIDOS-NACIONAIS:      ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NACIONAL']['RESUMO_EXPANDIDO']).encode("utf-8")
+        print "TRABALHOS-EXPANDIDOS-REGIONAIS:      ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['REGIONAL']['RESUMO_EXPANDIDO']).encode("utf-8")
+        print "TRABALHOS-EXPANDIDOS-LOCAIS:         ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['LOCAL']['RESUMO_EXPANDIDO']).encode("utf-8")
+        print "TRABALHOS-EXPANDIDOS-NAO-INFORMADO:  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NAO_INFORMADO']['RESUMO_EXPANDIDO']).encode("utf-8")
+
+        print "TRABALHOS-RESUMOS-INTERNACIONAIS:    ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['INTERNACIONAL']['RESUMO']).encode("utf-8")
+        print "TRABALHOS-RESUMOS-NACIONAIS:         ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NACIONAL']['RESUMO']).encode("utf-8")
+        print "TRABALHOS-RESUMOS-REGIONAIS:         ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['REGIONAL']['RESUMO']).encode("utf-8")
+        print "TRABALHOS-RESUMOS-LOCAIS:            ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['LOCAL']['RESUMO']).encode("utf-8")
+        print "TRABALHOS-RESUMOS-NAO-INFORMADO:     ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NAO_INFORMADO']['RESUMO']).encode("utf-8")
+
         print ''
 
 
