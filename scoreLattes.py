@@ -105,6 +105,7 @@ class Score(object):
         self.__projetos_de_pesquisa()
         self.__producao_bibliografica()
         self.__producao_tecnica()
+        self.__outra_producao()
 
     def __dados_gerais(self):
         if 'NUMERO-IDENTIFICADOR' not in self.__curriculo.attrib:
@@ -345,6 +346,69 @@ class Score(object):
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
                 self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO'] += 1
 
+    def __outra_producao(self):
+        producao = self.__curriculo.find('OUTRA-PRODUCAO')
+        if producao is None:
+            return
+
+        self.__producao_artistica_cultural(producao)
+        self.__orientacoes_concluidas(producao)
+
+    def __producao_artistica_cultural(self, producao):
+        obras = producao.find('PRODUCAO-ARTISTICA-CULTURAL')
+        if obras is None:
+            return
+
+        self.__apresentacao_de_obra_artistica(obras)
+        self.__composicao_musical(obras)
+
+    def __apresentacao_de_obra_artistica(self, obras):
+        apresentacoes = obras.findall('APRESENTACAO-DE-OBRA-ARTISTICA')
+        if apresentacoes is None:
+            return
+
+        for apresentacao in apresentacoes:
+            dados = apresentacao.find('DADOS-BASICOS-DA-APRESENTACAO-DE-OBRA-ARTISTICA')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA'] += 1
+
+    def __composicao_musical(self, obras):
+        composicoes = obras.findall('COMPOSICAO-MUSICAL')
+        if composicoes is None:
+            return
+
+        for composicao in composicoes:
+            dados = composicao.find('DADOS-BASICOS-DA-COMPOSICAO-MUSICAL')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL'] += 1
+
+    def __obra_de_artes_visuais(self, obras):
+        artes = obras.findall('OBRA-DE-ARTES-VISUAIS')
+        if artes is None:
+            return
+
+        for arte in artes:
+            dados = arte.find('DADOS-BASICOS-DA-OBRA-DE-ARTES-VISUAIS')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS'] += 1
+
+
+    def __orientacoes_concluidas(self, producao):
+        return
+
+
 
     def sumario(self, ostream):
         #print self.__tabela_de_qualificacao
@@ -385,6 +449,11 @@ class Score(object):
         print "PRODUTOS-TECNOLOGICOS:               ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO']).encode("utf-8")
         print "PROCESSOS-OU-TECNICAS:               ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS']).encode("utf-8")
         print "TRABALHOS-TECNICOS:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO']).encode("utf-8")
+
+        print "APRESENTACAO-DE-OBRA-ARTISTICA:      ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA']).encode("utf-8")
+        print "COMPOSICAO-MUSICAL:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL']).encode("utf-8")
+        print "OBRA-DE-ARTES-VISUAIS:               ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS']).encode("utf-8")
+
         print ''
 
 
