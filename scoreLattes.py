@@ -72,20 +72,17 @@ class Score(object):
                     'COMPOSICAO-MUSICAL': 0,
                     'OBRA-DE-ARTES-VISUAIS': 0,
                 },
-            },
-            'ORIENTACOES-CONCLUIDAS': {
-                'ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO': 0,
-                'ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO': 0,
-                'ORIENTACOES-CONCLUIDAS-PARA-MESTRADO': 0,
-            },
-            'CO-ORIENTACOES-CONCLUIDAS': {
-                'CO-ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO': 0,
-                'CO-ORIENTACOES-CONCLUIDAS-PARA-MESTRADO': 0,
-            },
-            'OUTRAS-ORIENTACOES-CONCLUIDAS': {
-                'MONOGRAFIA_DE_CONCLUSAO_DE_CURSO_APERFEICOAMENTO_E_ESPECIALIZACAO': 0,
-                'TRABALHO_DE_CONCLUSAO_DE_CURSO_GRADUACAO': 0,
-                'INICIACAO_CIENTIFICA': 0,
+                'ORIENTACOES-CONCLUIDAS': {
+                    'ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO': 0,
+                    'ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO': 0,
+                    'ORIENTACOES-CONCLUIDAS-PARA-MESTRADO': 0,
+                    'OUTRAS-ORIENTACOES-CONCLUIDAS': {
+                        'MONOGRAFIA_DE_CONCLUSAO_DE_CURSO_APERFEICOAMENTO_E_ESPECIALIZACAO': 0,
+                        'TRABALHO_DE_CONCLUSAO_DE_CURSO_GRADUACAO': 0,
+                        'INICIACAO_CIENTIFICA': 0,
+                        'ORIENTACAO-DE-OUTRA-NATUREZA': 0,
+                    },
+                },
             },
         }
         self.__pontuacao = {
@@ -94,9 +91,6 @@ class Score(object):
             'PRODUCAO-BIBLIOGRAFICA': 0,
             'PRODUCAO-TECNICA': 0,
             'OUTRA-PRODUCAO': 0,
-            'ORIENTACOES-CONCLUIDAS': 0,
-            'CO-ORIENTACOES-CONCLUIDAS': 0,
-            'OUTRAS-ORIENTACOES-CONCLUIDAS': 0,
         }
 
         # Calcula pontuação do currículo
@@ -404,11 +398,72 @@ class Score(object):
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
                 self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS'] += 1
 
-
     def __orientacoes_concluidas(self, producao):
-        return
+        orientacoes = producao.find('ORIENTACOES-CONCLUIDAS')
+        if orientacoes is None:
+            return
 
+        self.__orientacoes_pos_doutorado(orientacoes)
+        self.__orientacoes_doutorado(orientacoes)
+        self.__orientacoes_mestrado(orientacoes)
+        self.__outras_orientacoes_concluidas(orientacoes)
 
+    def __orientacoes_pos_doutorado(self, orientacoes):
+        postdocs = orientacoes.findall('ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO')
+        if postdocs is None:
+            return
+
+        for postdoc in postdocs:
+            dados = postdoc.find('DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO'] += 1
+
+    def __orientacoes_doutorado(self, orientacoes):
+        doutores = orientacoes.findall('ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO')
+        if doutores is None:
+            return
+
+        for doutor in doutores:
+            dados = doutor.find('DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'] += 1
+
+    def __orientacoes_mestrado(self, orientacoes):
+        mestres = orientacoes.findall('ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
+        if mestres is None:
+            return
+
+        for mestre in mestres:
+            dados = mestre.find('DADOS-BASICOS-DE-ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'] += 1
+
+    def __outras_orientacoes_concluidas(self, orientacoes):
+        estudantes = orientacoes.findall('OUTRAS-ORIENTACOES-CONCLUIDAS')
+        if estudantes is None:
+            return
+
+        for estudante in estudantes:
+            dados = estudante.find('DADOS-BASICOS-DE-OUTRAS-ORIENTACOES-CONCLUIDAS')
+            ano = dados.attrib['ANO']
+            if ano == "":
+                continue
+
+            if self.__ano_inicio <= int(ano) <= self.__ano_fim:
+                natureza = dados.attrib['NATUREZA']
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza] += 1
 
     def sumario(self, ostream):
         #print self.__tabela_de_qualificacao
@@ -453,6 +508,16 @@ class Score(object):
         print "APRESENTACAO-DE-OBRA-ARTISTICA:      ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA']).encode("utf-8")
         print "COMPOSICAO-MUSICAL:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL']).encode("utf-8")
         print "OBRA-DE-ARTES-VISUAIS:               ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS']).encode("utf-8")
+
+
+        print "ORIENTACOES-PARA-POS-DOUTORADO:      ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO']).encode("utf-8")
+        print "ORIENTACOES-PARA-DOUTORADO:          ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']).encode("utf-8")
+        print "ORIENTACOES-PARA-MESTRADO:           ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']).encode("utf-8")
+
+        print "ORIENTACOES-DE-ESPECIALIZACAO:       ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['MONOGRAFIA_DE_CONCLUSAO_DE_CURSO_APERFEICOAMENTO_E_ESPECIALIZACAO']).encode("utf-8")
+        print "ORIENTACOES-DE-TCC:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['TRABALHO_DE_CONCLUSAO_DE_CURSO_GRADUACAO']).encode("utf-8")
+        print "ORIENTACOES-DE-INICIACAO-CIENTIFICA: ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['INICIACAO_CIENTIFICA']).encode("utf-8")
+        print "ORIENTACOES-DE-OUTRA-NATUREZA:       ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['ORIENTACAO-DE-OUTRA-NATUREZA']).encode("utf-8")
 
         print ''
 
