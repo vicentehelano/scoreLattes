@@ -21,7 +21,8 @@
 # Author(s): Vicente Helano <vicente.sobrinho@ufca.edu.br>
 #
 
-import xml.etree.ElementTree as ET, sys, codecs, re, optparse
+import xml.etree.ElementTree as ET, sys, codecs, re, argparse
+from datetime import date
 
 class Score(object):
     """Pontuação do Currículo Lattes"""
@@ -465,9 +466,7 @@ class Score(object):
                 natureza = dados.attrib['NATUREZA']
                 self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza] += 1
 
-    def sumario(self, ostream):
-        #print self.__tabela_de_qualificacao
-        #print ''
+    def sumario(self):
         print self.__nome_completo
         print self.__numero_identificador
         print "FORMACAO-ACADEMICA-TITULACAO:        ".decode("utf8") + str(self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO']).encode("utf-8")
@@ -523,41 +522,29 @@ class Score(object):
 
 
 def main():
-    # Define program options
-    optParser = optparse.OptionParser(
-        usage="usage: %prog [options] XMLfile",
-        version="%prog 0.1",
-        description="Convert XML file exported by the Lattes CV platform to the BibTeX(ML) format.")
-    optParser.add_option("-f", "--filename", dest="filename",
-        help="write output to FILE (default is stdout)")
-    optParser.add_option("-x", "--xml",
-        action="store_true", dest="xml", default=False,
-        help="output file using the BibTeXML format")
-    optParser.add_option("-v", "--verbose",
-        action="store_true", dest="verbose", default=False,
+    # Define program arguments
+    parser = argparse.ArgumentParser(description="Computes scores from Lattes curricula.")
+    parser.add_argument('area', metavar='AREA', type=str, nargs=1,
+        help="specify Qualis Periodicos area")
+    parser.add_argument('istream', metavar='FILE', type=argparse.FileType('r'), default=sys.stdin,
+        help="XML file containing a Lattes curriculum")
+    parser.add_argument('-v', '--verbose', action='count',
         help="explain what is being done")
+    parser.add_argument('--version', action='version', version='%(prog)s 0.1')
+    parser.add_argument('-p', '--qualis-periodicos', dest='qualis_periodicos_year', default=2015, metavar='YYYY', type=int, nargs=1,
+        help="employ Qualis Periodicos from year YYYY")
+    parser.add_argument('-s', '--since-year', dest='since', default=-1, metavar='YYYY', type=int, nargs=1,
+        help="consider academic productivity since year YYYY")
+    parser.add_argument('-u', '--until-year', dest='until', default=date.today().year, metavar='YYYY', type=int, nargs=1,
+        help="consider academic productivity until year YYYY")
 
-    # Process options
-    (options, args) = optParser.parse_args()
+    # Process arguments
+    args = parser.parse_args()
 
-    if len(args) != 1:
-        optParser.error("incorrect number of arguments\n"
-            "Try `%s --help' for more information." % sys.argv[0])
-
-    sys.stdout = codecs.getwriter('utf8')(sys.stdout)
-
-    ostream = sys.stdout
-    if options.filename:
-        try:
-            ostream = codecs.open(options.filename, 'w', encoding='utf-8')
-        except:
-            sys.stderr.write(sys.argv[0] + ': cannot create file `' + options.filename + "'.\n")
-            sys.exit()
-
-    tree = ET.parse(args[0])
+    tree = ET.parse(args.istream)
     root = tree.getroot()
-    score = Score(root, 2012, 2016)
-    score.sumario(ostream)
+    score = Score(root, args.since[0], args.until[0])
+    score.sumario()
 
 # Main
 if __name__ == "__main__":
