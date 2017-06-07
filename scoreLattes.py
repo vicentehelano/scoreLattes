@@ -21,8 +21,11 @@
 # Author(s): Vicente Helano <vicente.sobrinho@ufca.edu.br>
 #
 
-import xml.etree.ElementTree as ET, sys, codecs, re, argparse
+import xml.etree.ElementTree as ET, sys, codecs, re, argparse, csv
 from datetime import date
+
+from Barema import weights
+from Bounds import bounds
 
 class Score(object):
     """Pontuação do Currículo Lattes"""
@@ -40,7 +43,7 @@ class Score(object):
         self.__trabalhos = 0
         self.__tabela_de_qualificacao = {
             'FORMACAO-ACADEMICA-TITULACAO' : {'POS-DOUTORADO': 0, 'LIVRE-DOCENCIA': 0, 'DOUTORADO': 0, 'MESTRADO': 0},
-            'PROJETO-DE-PESQUISA' : {'PESQUISA': 0, 'DESENVOLVIMENT0': 0},
+            'PROJETO-DE-PESQUISA' : {'PESQUISA': 0, 'DESENVOLVIMENTO': 0},
             'PRODUCAO-BIBLIOGRAFICA' : {
                 'ARTIGOS-PUBLICADOS': {'A1': 0, 'A2': 0, 'B1': 0, 'B2': 0, 'B3': 0, 'B4': 0, 'B5': 0, 'C': 0, 'NAO-ENCONTRADO': 0},
                 'TRABALHOS-EM-EVENTOS': {
@@ -86,13 +89,6 @@ class Score(object):
                 },
             },
         }
-        self.__pontuacao = {
-            'FORMACAO-ACADEMICA-TITULACAO' : 0,
-            'PROJETO-DE-PESQUISA': 0,
-            'PRODUCAO-BIBLIOGRAFICA': 0,
-            'PRODUCAO-TECNICA': 0,
-            'OUTRA-PRODUCAO': 0,
-        }
 
         # Calcula pontuação do currículo
         self.__dados_gerais()
@@ -115,17 +111,16 @@ class Score(object):
         formacao = dados.find('FORMACAO-ACADEMICA-TITULACAO')
         if formacao is None:
             return
-        barema = {'POS-DOUTORADO': 10, 'LIVRE-DOCENCIA': 8, 'DOUTORADO': 7, 'MESTRADO': 3}
-        for key,value in barema.items():
+
+        for key,value in weights['FORMACAO-ACADEMICA-TITULACAO'].items():
             result = formacao.find(key)
             if result is None:
                 continue
+
             if key == 'LIVRE-DOCENCIA': # neste caso, não há STATUS-DO-CURSO
                 self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
             elif result.attrib['STATUS-DO-CURSO'] == 'CONCLUIDO':
                 self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
-        # Calcula a pontuação total da formação acadêmica
-        self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO'] = sum(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'].values())
             
     def __projetos_de_pesquisa(self):
         dados = self.__curriculo.find('DADOS-GERAIS')
@@ -148,6 +143,10 @@ class Score(object):
                 inicio_part = int(participacao.attrib['ANO-INICIO'])
 
                 for projeto in projetos:
+                    natureza = projeto.attrib['NATUREZA']
+                    if natureza not in ['PESQUISA', 'DESENVOLVIMENTO']:
+                        continue
+
                     # Ignorar projeto ou participação em projeto iniciados fora do período estipulado
                     if projeto.attrib['ANO-INICIO'] != "":
                         if int(projeto.attrib['ANO-INICIO']) < self.__ano_inicio or int(projeto.attrib['ANO-INICIO']) > self.__ano_fim:
@@ -177,15 +176,10 @@ class Score(object):
                     if not fomento_externo:
                         continue
                     
-                    if projeto.attrib['NATUREZA'] == 'PESQUISA':
-                        if self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['PESQUISA'] <= 6: # máximo de 8 pontos
-                            self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['PESQUISA'] += 2
-                    elif projeto.attrib['NATUREZA'] == 'DESENVOLVIMENTO':
-                        if self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['DESENVOLVIMENT0'] <= 6: # máximo de 8 pontos
-                            self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['DESENVOLVIMENT0'] += 2
-
-        # Calcula a pontuação total dos projetos de pesquisa
-        self.__pontuacao['PROJETO-DE-PESQUISA'] = sum(self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA'].values())
+                    current = self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA'][natureza]
+                    weight = weights['PROJETO-DE-PESQUISA'][natureza]
+                    bound = bounds['PROJETO-DE-PESQUISA'][natureza]
+                    self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA'][natureza] = self.__clamp(current+weight, bound)
 
     def __producao_bibliografica(self):
         producao = self.__curriculo.find('PRODUCAO-BIBLIOGRAFICA')
@@ -217,9 +211,14 @@ class Score(object):
             ano = int(trabalho.find('DADOS-BASICOS-DO-TRABALHO').attrib['ANO-DO-TRABALHO'])
             if ano < self.__ano_inicio or ano > self.__ano_fim: # skip papers out-of-period
                 continue
+
             abrangencia = trabalho.find('DETALHAMENTO-DO-TRABALHO').attrib['CLASSIFICACAO-DO-EVENTO']
             natureza = trabalho.find('DADOS-BASICOS-DO-TRABALHO').attrib['NATUREZA']
-            self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS'][abrangencia][natureza] += 1
+
+            current = self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS'][abrangencia][natureza]
+            weight = weights['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS'][abrangencia][natureza]
+            bound = bounds['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS'][abrangencia][natureza]
+            self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS'][abrangencia][natureza] = self.__clamp(current+weight, bound)
 
     def __livros_e_capitulos(self, producao):
         itens = producao.find('LIVROS-E-CAPITULOS')
@@ -236,7 +235,12 @@ class Score(object):
                 paginas = int(livro.find('DETALHAMENTO-DO-LIVRO').attrib['NUMERO-DE-PAGINAS'])
                 if paginas > 49: # número mínimo de páginas para livros publicados e traduções
                     tipo = livro.find('DADOS-BASICOS-DO-LIVRO').attrib['TIPO']
-                    self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO'][tipo] += 1
+
+                    current = self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO'][tipo]
+                    weight = weights['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO'][tipo]
+                    bound = bounds['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO'][tipo]
+
+                    self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO'][tipo] = self.__clamp(current+weight, bound)
 
         capitulos = itens.find('CAPITULOS-DE-LIVROS-PUBLICADOS')
         if capitulos != None:
@@ -246,7 +250,12 @@ class Score(object):
                 ano = int(capitulo.find('DADOS-BASICOS-DO-CAPITULO').attrib['ANO'])
                 if ano < self.__ano_inicio or ano > self.__ano_fim: # skip out-of-allowed-period production
                     continue
-                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO'] += 1
+
+                current = self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO']
+                weight = weights['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO']
+                bound = bounds['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO']
+
+                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO'] = self.__clamp(current+weight, bound)
 
     def __demais_tipos_de_producao(self, producao):
         itens = producao.find('DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA')
@@ -261,7 +270,11 @@ class Score(object):
                 continue
             paginas = int(traducao.find('DETALHAMENTO-DA-TRADUCAO').attrib['NUMERO-DE-PAGINAS'])
             if paginas > 49: # número mínimo de páginas para livros publicados e traduções
-                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO'] += 1
+                current = self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO']
+                weight = weights['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO']
+                bound = bounds['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO']
+
+                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO'] = self.__clamp(current+weight, bound)
 
     def __producao_tecnica(self):
         producao = self.__curriculo.find('PRODUCAO-TECNICA')
@@ -284,7 +297,11 @@ class Score(object):
             if ano == "":
                 continue
             elif self.__ano_inicio <= int(ano) <= self.__ano_fim: # somente os artigos dirante o período estipulado
-                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['SOFTWARE'] += 1
+                current = self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['SOFTWARE']
+                weight = weights['PRODUCAO-TECNICA']['SOFTWARE']
+                bound = bounds['PRODUCAO-TECNICA']['SOFTWARE']
+
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['SOFTWARE'] = self.__clamp(current+weight, bound)
 
     def __patentes(self, producao):
         patentes = producao.findall('PATENTE')
@@ -297,10 +314,16 @@ class Score(object):
             concessao = (registro.attrib['DATA-DE-CONCESSAO'])[4:]
             if concessao != "":
                 if self.__ano_inicio <= int(concessao) <= self.__ano_fim:
-                    self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA'] += 1
+                    current = self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA']
+                    weight = weights['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA']
+                    bound = bounds['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA']
+                    self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['CONCEDIDA'] = self.__clamp(current+weight, bound)
             elif deposito != "":
                 if self.__ano_inicio <= int(deposito) <= self.__ano_fim:
-                    self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA'] += 1
+                    current = self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA']
+                    weight = weights['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA']
+                    bound = bounds['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA']
+                    self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE']['DEPOSITADA'] = self.__clamp(current+weight, bound)
 
     def __produtos_tecnologicos(self, producao):
         produtos = producao.findall('PRODUTO-TECNOLOGICO')
@@ -313,7 +336,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO'] += 1
+                current = self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO']
+                weight = weights['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO']
+                bound = bounds['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO']
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO'] = self.__clamp(current+weight, bound)
 
     def __processos_ou_tecnicas(self, producao):
         processos = producao.findall('PROCESSOS-OU-TECNICAS')
@@ -326,7 +352,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS'] += 1
+                current = self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS']
+                weight = weights['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS']
+                bound = bounds['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS']
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS'] = self.__clamp(current+weight, bound)
 
     def __trabalho_tecnico(self, producao):
         trabalhos = producao.findall('TRABALHO-TECNICO')
@@ -339,7 +368,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO'] += 1
+                current = self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO']
+                weight = weights['PRODUCAO-TECNICA']['TRABALHO-TECNICO']
+                bound = bounds['PRODUCAO-TECNICA']['TRABALHO-TECNICO']
+                self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO'] = self.__clamp(current+weight, bound)
 
     def __outra_producao(self):
         producao = self.__curriculo.find('OUTRA-PRODUCAO')
@@ -356,6 +388,7 @@ class Score(object):
 
         self.__apresentacao_de_obra_artistica(obras)
         self.__composicao_musical(obras)
+        self.__obra_de_artes_visuais(obras)
 
     def __apresentacao_de_obra_artistica(self, obras):
         apresentacoes = obras.findall('APRESENTACAO-DE-OBRA-ARTISTICA')
@@ -369,7 +402,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA'] += 1
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA']
+                weight = weights['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA']
+                bound = bounds['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA']
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['APRESENTACAO-DE-OBRA-ARTISTICA'] = self.__clamp(current+weight, bound)
 
     def __composicao_musical(self, obras):
         composicoes = obras.findall('COMPOSICAO-MUSICAL')
@@ -383,7 +419,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL'] += 1
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL']
+                weight = weights['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL']
+                bound = bounds['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL']
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['COMPOSICAO-MUSICAL'] = self.__clamp(current+weight, bound)
 
     def __obra_de_artes_visuais(self, obras):
         artes = obras.findall('OBRA-DE-ARTES-VISUAIS')
@@ -397,7 +436,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS'] += 1
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS']
+                weight = weights['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS']
+                bound = bounds['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS']
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL']['OBRA-DE-ARTES-VISUAIS'] = self.__clamp(current+weight, bound)
 
     def __orientacoes_concluidas(self, producao):
         orientacoes = producao.find('ORIENTACOES-CONCLUIDAS')
@@ -421,7 +463,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO'] += 1
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO']
+                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO']
+                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO']
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO'] = self.__clamp(current+weight, bound)
 
     def __orientacoes_doutorado(self, orientacoes):
         doutores = orientacoes.findall('ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO')
@@ -435,7 +480,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'] += 1
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']
+                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']
+                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'] = self.__clamp(current+weight, bound)
 
     def __orientacoes_mestrado(self, orientacoes):
         mestres = orientacoes.findall('ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
@@ -449,7 +497,10 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'] += 1
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']
+                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']
+                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'] = self.__clamp(current+weight, bound)
 
     def __outras_orientacoes_concluidas(self, orientacoes):
         estudantes = orientacoes.findall('OUTRAS-ORIENTACOES-CONCLUIDAS')
@@ -464,13 +515,25 @@ class Score(object):
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
                 natureza = dados.attrib['NATUREZA']
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza] += 1
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza]
+                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza]
+                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza]
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza] = self.__clamp(current+weight, bound)
+
+    def __clamp(self,x,upper):
+        return max(min(float(upper),x), 0)
 
     def sumario(self):
         print self.__nome_completo
-        print self.__numero_identificador
-        print "FORMACAO-ACADEMICA-TITULACAO:        ".decode("utf8") + str(self.__pontuacao['FORMACAO-ACADEMICA-TITULACAO']).encode("utf-8")
-        print "PROJETO-DE-PESQUISA:                 ".decode("utf8") + str(self.__pontuacao['PROJETO-DE-PESQUISA']).encode("utf-8")
+        print "ID Lattes: " + self.__numero_identificador
+        print "POS-DOUTORADO:                       ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['POS-DOUTORADO']).encode("utf-8")
+        print "LIVRE-DOCENCIA:                      ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['LIVRE-DOCENCIA']).encode("utf-8")
+        print "DOUTORADO:                           ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['DOUTORADO']).encode("utf-8")
+        print "MESTRADO:                            ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['MESTRADO']).encode("utf-8")
+
+        print "PROJETO-DE-PESQUISA:                 ".decode("utf8") + str(self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['PESQUISA']).encode("utf-8")
+        print "PROJETO-DE-DESENVOLVIMENTO:          ".decode("utf8") + str(self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['DESENVOLVIMENTO']).encode("utf-8")
+
         print "ARTIGOS-PUBLICADOS:                  ".decode("utf8") + str(self.__artigos).encode("utf-8")
 
         print "TRABALHOS-COMPLETOS-INTERNACIONAIS:  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['INTERNACIONAL']['COMPLETO']).encode("utf-8")
@@ -519,7 +582,6 @@ class Score(object):
         print "ORIENTACOES-DE-OUTRA-NATUREZA:       ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['ORIENTACAO-DE-OUTRA-NATUREZA']).encode("utf-8")
 
         print ''
-
 
 def main():
     # Define program arguments
