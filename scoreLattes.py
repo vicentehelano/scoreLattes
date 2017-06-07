@@ -29,18 +29,16 @@ from Bounds import bounds
 
 class Score(object):
     """Pontuação do Currículo Lattes"""
-    def __init__(self, root, inicio, fim):
+    def __init__(self, root, inicio, fim, area, ano_qualis_periodicos):
         # Período considerado para avaliação
         self.__curriculo = root
         self.__numero_identificador = 0
         self.__nome_completo = ''
         self.__ano_inicio = inicio
         self.__ano_fim = fim
-        self.__formacao = 0
-        self.__projetos_pesquisa = 0
-        self.__projetos_desenvolvimento = 0
-        self.__artigos = 0
-        self.__trabalhos = 0
+        self.__area = area
+        self.__ano_qualis_periodicos = ano_qualis_periodicos
+        self.__qualis_periodicos = {}
         self.__tabela_de_qualificacao = {
             'FORMACAO-ACADEMICA-TITULACAO' : {'POS-DOUTORADO': 0, 'LIVRE-DOCENCIA': 0, 'DOUTORADO': 0, 'MESTRADO': 0},
             'PROJETO-DE-PESQUISA' : {'PESQUISA': 0, 'DESENVOLVIMENTO': 0},
@@ -93,6 +91,7 @@ class Score(object):
         # Calcula pontuação do currículo
         self.__dados_gerais()
         self.__formacao_academica_titulacao()
+        self.__carrega_qualis_periodicos()
         self.__projetos_de_pesquisa()
         self.__producao_bibliografica()
         self.__producao_tecnica()
@@ -199,9 +198,27 @@ class Score(object):
         for artigo in artigos.findall('ARTIGO-PUBLICADO'):
             dados = artigo.find('DADOS-BASICOS-DO-ARTIGO')
             ano = int(dados.attrib['ANO-DO-ARTIGO'])
-            if ano >= self.__ano_inicio and ano <= self.__ano_fim: # somente os artigos dirante o período estipulado
-                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['NAO-ENCONTRADO'] += 1
-        self.__artigos = sum(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'].values())
+            if self.__ano_inicio <= ano <= self.__ano_fim: # somente os artigos dirante o período estipulado
+                issn = artigo.find('DETALHAMENTO-DO-ARTIGO').attrib['ISSN']
+                if issn == "":
+                    estrato = 'NAO-ENCONTRADO'
+                else:
+                    estrato = self.__get_qualis_periodicos(issn)
+
+                current = self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
+                weight = weights['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
+                if estrato == 'A1':
+                    print issn
+                    print artigo.find('DADOS-BASICOS-DO-ARTIGO').attrib['TITULO-DO-ARTIGO']
+                    
+                bound = bounds['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
+                self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato] = self.__clamp(current+weight, bound)
+
+    def __get_qualis_periodicos(self, issn):
+        key = issn[0:4] + '-' + issn[4:]
+        if key in self.__qualis_periodicos:
+            return self.__qualis_periodicos[key]
+        return 'NAO-ENCONTRADO'
 
     def __trabalhos_em_eventos(self, producao):
         trabalhos = producao.find('TRABALHOS-EM-EVENTOS')
@@ -520,6 +537,14 @@ class Score(object):
                 bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza]
                 self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza] = self.__clamp(current+weight, bound)
 
+    def __carrega_qualis_periodicos(self):
+        with open('qualis-periodicos-' + str(self.__ano_qualis_periodicos) + '.csv', 'rb') as csvfile:
+            reader = csv.reader(csvfile, delimiter=',', quotechar='"')
+            for row in reader:
+                area = row[2]
+                if area == self.__area:
+                    self.__qualis_periodicos[row[0]] = row[3]
+
     def __clamp(self,x,upper):
         return max(min(float(upper),x), 0)
 
@@ -534,7 +559,15 @@ class Score(object):
         print "PROJETO-DE-PESQUISA:                 ".decode("utf8") + str(self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['PESQUISA']).encode("utf-8")
         print "PROJETO-DE-DESENVOLVIMENTO:          ".decode("utf8") + str(self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA']['DESENVOLVIMENTO']).encode("utf-8")
 
-        print "ARTIGOS-PUBLICADOS:                  ".decode("utf8") + str(self.__artigos).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-A1:        ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['A1']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-A2:        ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['A2']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-B1:        ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['B1']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-B2:        ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['B2']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-B3:        ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['B3']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-B4:        ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['B4']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-B5:        ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['B5']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-QUALIS-C:         ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['C']).encode("utf-8")
+        print "ARTIGOS-PUBLICADOS-SEM-QUALIS:       ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS']['NAO-ENCONTRADO']).encode("utf-8")
 
         print "TRABALHOS-COMPLETOS-INTERNACIONAIS:  ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['INTERNACIONAL']['COMPLETO']).encode("utf-8")
         print "TRABALHOS-COMPLETOS-NACIONAIS:       ".decode("utf8") + str(self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NACIONAL']['COMPLETO']).encode("utf-8")
@@ -593,7 +626,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='count',
         help="explain what is being done")
     parser.add_argument('--version', action='version', version='%(prog)s 0.1')
-    parser.add_argument('-p', '--qualis-periodicos', dest='qualis_periodicos_year', default=2015, metavar='YYYY', type=int, nargs=1,
+    parser.add_argument('-p', '--qualis-periodicos', dest='ano_qualis_periodicos', default=2015, metavar='YYYY', type=int, nargs=1,
         help="employ Qualis Periodicos from year YYYY")
     parser.add_argument('-s', '--since-year', dest='since', default=-1, metavar='YYYY', type=int, nargs=1,
         help="consider academic productivity since year YYYY")
@@ -605,8 +638,9 @@ def main():
 
     tree = ET.parse(args.istream)
     root = tree.getroot()
-    score = Score(root, args.since[0], args.until[0])
-    score.sumario()
+    score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos)
+    if args.verbose == 1:
+        score.sumario()
 
 # Main
 if __name__ == "__main__":
