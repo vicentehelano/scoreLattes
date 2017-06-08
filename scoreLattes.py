@@ -22,9 +22,10 @@
 #
 
 import xml.etree.ElementTree as ET, sys, codecs, re, argparse, csv
+from unidecode import unidecode
 from datetime import date
 
-from Barema import weights
+from Weights import weights
 from Bounds import bounds
 
 class Score(object):
@@ -32,8 +33,9 @@ class Score(object):
     def __init__(self, root, inicio, fim, area, ano_qualis_periodicos):
         # Período considerado para avaliação
         self.__curriculo = root
-        self.__numero_identificador = 0
+        self.__numero_identificador = ''
         self.__nome_completo = ''
+        self.__score = 0
         self.__ano_inicio = inicio
         self.__ano_fim = fim
         self.__area = area
@@ -76,8 +78,8 @@ class Score(object):
                 },
                 'ORIENTACOES-CONCLUIDAS': {
                     'ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO': 0,
-                    'ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO': 0,
-                    'ORIENTACOES-CONCLUIDAS-PARA-MESTRADO': 0,
+                    'ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO': {'ORIENTADOR_PRINCIPAL': 0, 'CO_ORIENTADOR': 0},
+                    'ORIENTACOES-CONCLUIDAS-PARA-MESTRADO': {'ORIENTADOR_PRINCIPAL': 0, 'CO_ORIENTADOR': 0},
                     'OUTRAS-ORIENTACOES-CONCLUIDAS': {
                         'MONOGRAFIA_DE_CONCLUSAO_DE_CURSO_APERFEICOAMENTO_E_ESPECIALIZACAO': 0,
                         'TRABALHO_DE_CONCLUSAO_DE_CURSO_GRADUACAO': 0,
@@ -91,11 +93,34 @@ class Score(object):
         # Calcula pontuação do currículo
         self.__dados_gerais()
         self.__formacao_academica_titulacao()
-        self.__carrega_qualis_periodicos()
         self.__projetos_de_pesquisa()
         self.__producao_bibliografica()
         self.__producao_tecnica()
         self.__outra_producao()
+        self.__pontuacao_acumulada()
+
+    def __pontuacao_acumulada(self):
+        self.__score  = sum( self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['INTERNACIONAL'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NACIONAL'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['REGIONAL'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['LOCAL'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['TRABALHOS-EM-EVENTOS']['NAO_INFORMADO'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['LIVRO-PUBLICADO-OU-ORGANIZADO'].values() )
+        self.__score += self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['LIVROS-E-CAPITULOS']['CAPITULO-DE-LIVRO-PUBLICADO']
+        self.__score += self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['DEMAIS-TIPOS-DE-PRODUCAO-BIBLIOGRAFICA']['TRADUCAO']
+        self.__score += self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['SOFTWARE']
+        self.__score += sum( self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PATENTE'].values() )
+        self.__score += self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PRODUTO-TECNOLOGICO']
+        self.__score += self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['PROCESSOS-OU-TECNICAS']
+        self.__score += self.__tabela_de_qualificacao['PRODUCAO-TECNICA']['TRABALHO-TECNICO']
+        self.__score += sum( self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['PRODUCAO-ARTISTICA-CULTURAL'].values() )
+        self.__score += self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO']
+        self.__score += sum( self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'].values() )
+        self.__score += sum( self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'].values() )
 
     def __dados_gerais(self):
         if 'NUMERO-IDENTIFICADOR' not in self.__curriculo.attrib:
@@ -195,10 +220,13 @@ class Score(object):
         artigos = producao.find('ARTIGOS-PUBLICADOS')
         if artigos is None:
             return
+
+        self.__carrega_qualis_periodicos() # load Qualis Periodicos
+
         for artigo in artigos.findall('ARTIGO-PUBLICADO'):
             dados = artigo.find('DADOS-BASICOS-DO-ARTIGO')
             ano = int(dados.attrib['ANO-DO-ARTIGO'])
-            if self.__ano_inicio <= ano <= self.__ano_fim: # somente os artigos dirante o período estipulado
+            if self.__ano_inicio <= ano <= self.__ano_fim: # somente os artigos durante o período estabelecido
                 issn = artigo.find('DETALHAMENTO-DO-ARTIGO').attrib['ISSN']
                 if issn == "":
                     estrato = 'NAO-ENCONTRADO'
@@ -207,18 +235,38 @@ class Score(object):
 
                 current = self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
                 weight = weights['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
-                if estrato == 'A1':
-                    print issn
-                    print artigo.find('DADOS-BASICOS-DO-ARTIGO').attrib['TITULO-DO-ARTIGO']
-                    
                 bound = bounds['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
                 self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato] = self.__clamp(current+weight, bound)
+
+    def __format_area_name(self, area):
+        area = area.strip().upper()
+        area = unidecode( area.decode("utf-8") )
+        area = area.replace('/', '')
+        area = area.replace(',', '')
+        area = area.replace('  ', ' ') # remove duplicate spaces
+        area = area.replace(' ', '_')
+        return area.replace('Ç', 'C')
+
+    def __carrega_qualis_periodicos(self):
+        with open('qualis-periodicos-'+str(self.__ano_qualis_periodicos)+'.csv', 'rb') as csvfile:
+            reader = csv.reader(csvfile, delimiter=',', quotechar='"')
+            next(reader) # skip headers
+
+            for row in reader:
+                issn = row[0]
+                area = row[2]
+                estrato = row[3]
+                if self.__format_area_name(area) == self.__area:
+                    self.__qualis_periodicos[issn] = estrato
 
     def __get_qualis_periodicos(self, issn):
         key = issn[0:4] + '-' + issn[4:]
         if key in self.__qualis_periodicos:
             return self.__qualis_periodicos[key]
         return 'NAO-ENCONTRADO'
+
+    def __clamp(self,x,upper):
+        return max(min(float(upper),x), 0)
 
     def __trabalhos_em_eventos(self, producao):
         trabalhos = producao.find('TRABALHOS-EM-EVENTOS')
@@ -395,7 +443,8 @@ class Score(object):
         if producao is None:
             return
 
-        self.__producao_artistica_cultural(producao)
+        if self.__area == 'ARTES_MUSICA': # only counts for arts and musics projects
+            self.__producao_artistica_cultural(producao)
         self.__orientacoes_concluidas(producao)
 
     def __producao_artistica_cultural(self, producao):
@@ -497,10 +546,12 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']
-                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']
-                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'] = self.__clamp(current+weight, bound)
+                detalhamento = doutor.find('DETALHAMENTO-DE-ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO')
+                tipo = detalhamento.attrib['TIPO-DE-ORIENTACAO']
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'][tipo]
+                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'][tipo]
+                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'][tipo]
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO'][tipo] = self.__clamp(current+weight, bound)
 
     def __orientacoes_mestrado(self, orientacoes):
         mestres = orientacoes.findall('ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
@@ -514,10 +565,12 @@ class Score(object):
                 continue
 
             if self.__ano_inicio <= int(ano) <= self.__ano_fim:
-                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']
-                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']
-                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']
-                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'] = self.__clamp(current+weight, bound)
+                detalhamento = mestre.find('DETALHAMENTO-DE-ORIENTACOES-CONCLUIDAS-PARA-MESTRADO')
+                tipo = detalhamento.attrib['TIPO-DE-ORIENTACAO']
+                current = self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'][tipo]
+                weight = weights['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'][tipo]
+                bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'][tipo]
+                self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO'][tipo] = self.__clamp(current+weight, bound)
 
     def __outras_orientacoes_concluidas(self, orientacoes):
         estudantes = orientacoes.findall('OUTRAS-ORIENTACOES-CONCLUIDAS')
@@ -537,19 +590,17 @@ class Score(object):
                 bound = bounds['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza]
                 self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS'][natureza] = self.__clamp(current+weight, bound)
 
-    def __carrega_qualis_periodicos(self):
-        with open('qualis-periodicos-' + str(self.__ano_qualis_periodicos) + '.csv', 'rb') as csvfile:
-            reader = csv.reader(csvfile, delimiter=',', quotechar='"')
-            for row in reader:
-                area = row[2]
-                if area == self.__area:
-                    self.__qualis_periodicos[row[0]] = row[3]
+    def get_name(self):
+        return self.__nome_completo
 
-    def __clamp(self,x,upper):
-        return max(min(float(upper),x), 0)
+    def get_lattes_id(self):
+        return self.__numero_identificador
+
+    def get_score(self):
+        return self.__score
 
     def sumario(self):
-        print self.__nome_completo
+        print self.__nome_completo.encode("utf-8")
         print "ID Lattes: " + self.__numero_identificador
         print "POS-DOUTORADO:                       ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['POS-DOUTORADO']).encode("utf-8")
         print "LIVRE-DOCENCIA:                      ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['LIVRE-DOCENCIA']).encode("utf-8")
@@ -606,14 +657,18 @@ class Score(object):
 
 
         print "ORIENTACOES-PARA-POS-DOUTORADO:      ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-POS-DOUTORADO']).encode("utf-8")
-        print "ORIENTACOES-PARA-DOUTORADO:          ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']).encode("utf-8")
-        print "ORIENTACOES-PARA-MESTRADO:           ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']).encode("utf-8")
+        print "ORIENTACOES-PARA-DOUTORADO:          ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']['ORIENTADOR_PRINCIPAL']).encode("utf-8")
+        print "ORIENTACOES-PARA-MESTRADO:           ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']['ORIENTADOR_PRINCIPAL']).encode("utf-8")
+        print "CO-ORIENTACOES-PARA-DOUTORADO:       ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-DOUTORADO']['CO_ORIENTADOR']).encode("utf-8")
+        print "CO-ORIENTACOES-PARA-MESTRADO:        ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['ORIENTACOES-CONCLUIDAS-PARA-MESTRADO']['CO_ORIENTADOR']).encode("utf-8")
+
 
         print "ORIENTACOES-DE-ESPECIALIZACAO:       ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['MONOGRAFIA_DE_CONCLUSAO_DE_CURSO_APERFEICOAMENTO_E_ESPECIALIZACAO']).encode("utf-8")
         print "ORIENTACOES-DE-TCC:                  ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['TRABALHO_DE_CONCLUSAO_DE_CURSO_GRADUACAO']).encode("utf-8")
         print "ORIENTACOES-DE-INICIACAO-CIENTIFICA: ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['INICIACAO_CIENTIFICA']).encode("utf-8")
         print "ORIENTACOES-DE-OUTRA-NATUREZA:       ".decode("utf8") + str(self.__tabela_de_qualificacao['OUTRA-PRODUCAO']['ORIENTACOES-CONCLUIDAS']['OUTRAS-ORIENTACOES-CONCLUIDAS']['ORIENTACAO-DE-OUTRA-NATUREZA']).encode("utf-8")
 
+        print "TOTAL:                               ".decode("utf8") + str(self.__score).encode("utf-8")
         print ''
 
 def main():
@@ -641,6 +696,8 @@ def main():
     score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos)
     if args.verbose == 1:
         score.sumario()
+    else:
+        print "%s,%s,%f" % ( score.get_lattes_id(), score.get_name().upper(), score.get_score() )
 
 # Main
 if __name__ == "__main__":
