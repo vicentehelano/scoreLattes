@@ -681,7 +681,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='count',
         help="explain what is being done")
     parser.add_argument('--version', action='version', version='%(prog)s 0.1')
-    parser.add_argument('-p', '--qualis-periodicos', dest='ano_qualis_periodicos', default=2015, metavar='YYYY', type=int, nargs=1,
+    parser.add_argument('-p', '--qualis-periodicos', dest='ano_qualis_periodicos', default=[2015], metavar='YYYY', type=int, nargs=1,
         help="employ Qualis Periodicos from year YYYY")
     parser.add_argument('-s', '--since-year', dest='since', default=-1, metavar='YYYY', type=int, nargs=1,
         help="consider academic productivity since year YYYY")
@@ -693,7 +693,7 @@ def main():
 
     tree = ET.parse(args.istream)
     root = tree.getroot()
-    score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos)
+    score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos[0])
     if args.verbose == 1:
         score.sumario()
     else:
