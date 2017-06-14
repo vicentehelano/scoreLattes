@@ -21,7 +21,9 @@
 # Author(s): Vicente Helano <vicente.sobrinho@ufca.edu.br>
 #
 
-import xml.etree.ElementTree as ET, sys, codecs, re, argparse, csv
+import sys, time, codecs, re, argparse, csv, requests
+import xml.etree.ElementTree as ET
+from bs4 import BeautifulSoup
 from unidecode import unidecode
 from datetime import date
 
@@ -41,6 +43,7 @@ class Score(object):
         self.__area = area
         self.__ano_qualis_periodicos = ano_qualis_periodicos
         self.__qualis_periodicos = {}
+        self.__qualis_periodicos_issn = {}
         self.__tabela_de_qualificacao = {
             'FORMACAO-ACADEMICA-TITULACAO' : {'POS-DOUTORADO': 0, 'LIVRE-DOCENCIA': 0, 'DOUTORADO': 0, 'MESTRADO': 0},
             'PROJETO-DE-PESQUISA' : {'PESQUISA': 0, 'DESENVOLVIMENTO': 0},
@@ -94,10 +97,10 @@ class Score(object):
         self.__dados_gerais()
         self.__formacao_academica_titulacao()
         self.__projetos_de_pesquisa()
-        self.__producao_bibliografica()
-        self.__producao_tecnica()
-        self.__outra_producao()
-        self.__pontuacao_acumulada()
+        #self.__producao_bibliografica()
+        #self.__producao_tecnica()
+        #self.__outra_producao()
+        #self.__pontuacao_acumulada()
 
     def __pontuacao_acumulada(self):
         self.__score  = sum( self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'].values() )
@@ -215,7 +218,6 @@ class Score(object):
         self.__livros_e_capitulos(producao)
         self.__demais_tipos_de_producao(producao)
 
-    ################ TODO: falta usar o Qualis #################
     def __artigos_publicados(self, producao):
         artigos = producao.find('ARTIGOS-PUBLICADOS')
         if artigos is None:
@@ -227,12 +229,7 @@ class Score(object):
             dados = artigo.find('DADOS-BASICOS-DO-ARTIGO')
             ano = int(dados.attrib['ANO-DO-ARTIGO'])
             if self.__ano_inicio <= ano <= self.__ano_fim: # somente os artigos durante o período estabelecido
-                issn = artigo.find('DETALHAMENTO-DO-ARTIGO').attrib['ISSN']
-                if issn == "":
-                    estrato = 'NAO-ENCONTRADO'
-                else:
-                    estrato = self.__get_qualis_periodicos(issn)
-
+                estrato = self.__get_qualis_periodicos(artigo)
                 current = self.__tabela_de_qualificacao['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
                 weight = weights['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
                 bound = bounds['PRODUCAO-BIBLIOGRAFICA']['ARTIGOS-PUBLICADOS'][estrato]
@@ -254,16 +251,74 @@ class Score(object):
 
             for row in reader:
                 issn = row[0]
+                title = unidecode(row[1].decode("utf-8")).split('(')[0]
+                title = title.strip().upper()
                 area = row[2]
                 estrato = row[3]
                 if self.__format_area_name(area) == self.__area:
                     self.__qualis_periodicos[issn] = estrato
+                    self.__qualis_periodicos_issn[title] = issn
 
-    def __get_qualis_periodicos(self, issn):
-        key = issn[0:4] + '-' + issn[4:]
-        if key in self.__qualis_periodicos:
-            return self.__qualis_periodicos[key]
+    # Important: number-only ISSN, i.e., without hyphen.
+    def __get_qualis_periodicos_from_issn(self, issn):
+        if issn != "":
+            if issn in self.__qualis_periodicos:
+                return self.__qualis_periodicos[issn]
         return 'NAO-ENCONTRADO'
+
+    def __get_qualis_periodicos_from_title(self, title):
+        if title != "" and title != None:
+            print '[' + title + ']'
+            if title in self.__qualis_periodicos_issn:
+                return self.__qualis_periodicos[ self.__qualis_periodicos_issn[title] ]
+        return 'NAO-ENCONTRADO'
+
+    def __get_qualis_periodicos(self, artigo):
+        # first, try to extract qualis using the issn from xlm data
+        issn = artigo.find('DETALHAMENTO-DO-ARTIGO').attrib['ISSN']
+        estrato = self.__get_qualis_periodicos_from_issn(issn[0:4] + '-' + issn[4:])
+        if estrato != 'NAO-ENCONTRADO':
+            return estrato
+
+        # If you reach here, the issn is not available in Qualis Periodicos.
+        # Try to fetch issns from DOI, alternatively.
+        print 'ISSN not found. Trying to fetch ISSNs from DOI'
+        print self.__nome_completo
+        print self.__numero_identificador
+        print issn
+        if 'DOI' in artigo.find('DADOS-BASICOS-DO-ARTIGO').attrib:
+            doi = artigo.find('DADOS-BASICOS-DO-ARTIGO').attrib['DOI']
+            url = 'http://dx.doi.org/' + doi
+            estratos = ['NAO-ENCONTRADO']
+            for i in range(5):
+                r = requests.get(url)
+                if r.status_code != 200: # if we've got a error, try again, at most 5 times
+                    time.sleep(3.0)
+                    continue
+
+                soup = BeautifulSoup(r.text, "lxml")
+                metas = soup.find_all('meta')
+                issns = [ meta.attrs['content'] for meta in metas if 'name' in meta.attrs and meta.attrs['name'].upper() == 'CITATION_ISSN' ]
+                print 'ISSNs found: ', issns
+                for issn in issns:
+                    estratos.append(self.__get_qualis_periodicos_from_issn(issn))
+                break
+            estrato = min(estratos)
+
+        # Last try.
+        # We will search the article by the journal title
+        # TODO: we could also use the title given by the DOI response.
+        print 'ISSN still not found. Trying to find Qualis by title...'
+        if estrato == 'NAO-ENCONTRADO':
+            title = unidecode( (artigo.find('DETALHAMENTO-DO-ARTIGO').attrib['TITULO-DO-PERIODICO-OU-REVISTA']).decode("utf-8") ).split('(')[0]
+            title = title.strip().upper()
+            estrato = self.__get_qualis_periodicos_from_title(title)
+            if estrato == 'NAO-ENCONTRADO':
+                print 'Title not found: ' + title
+            else:
+                print 'Success. Qualis = ' + estrato
+
+        return estrato
 
     def __clamp(self,x,upper):
         return max(min(float(upper),x), 0)
@@ -687,6 +742,9 @@ def main():
         help="consider academic productivity since year YYYY")
     parser.add_argument('-u', '--until-year', dest='until', default=date.today().year, metavar='YYYY', type=int, nargs=1,
         help="consider academic productivity until year YYYY")
+
+    reload(sys)
+    sys.setdefaultencoding('utf-8')
 
     # Process arguments
     args = parser.parse_args()
