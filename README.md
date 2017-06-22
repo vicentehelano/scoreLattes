@@ -1,7 +1,7 @@
 # scoreLattes
 Computes scores from Lattes curricula.
 
-# Usage
+## Usage
 scoreLattes.py [-h] [-v] [--version] [-p YYYY] [-s YYYY] [-u YYYY] "AREA" FILE
 
 where AREA must be one of the following:
