@@ -32,12 +32,13 @@ from Bounds import bounds
 
 class Score(object):
     """Pontuação do Currículo Lattes"""
-    def __init__(self, root, inicio, fim, area, ano_qualis_periodicos):
+    def __init__(self, root, inicio, fim, area, ano_qualis_periodicos, verbose = 0):
         # Período considerado para avaliação
         self.__curriculo = root
         self.__numero_identificador = ''
         self.__nome_completo = ''
         self.__score = 0
+        self.__verbose = verbose
         self.__ano_inicio = inicio
         self.__ano_fim = fim
         self.__area = area
@@ -97,10 +98,10 @@ class Score(object):
         self.__dados_gerais()
         self.__formacao_academica_titulacao()
         self.__projetos_de_pesquisa()
-        #self.__producao_bibliografica()
-        #self.__producao_tecnica()
-        #self.__outra_producao()
-        #self.__pontuacao_acumulada()
+        self.__producao_bibliografica()
+        self.__producao_tecnica()
+        self.__outra_producao()
+        self.__pontuacao_acumulada()
 
     def __pontuacao_acumulada(self):
         self.__score  = sum( self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'].values() )
@@ -268,7 +269,8 @@ class Score(object):
 
     def __get_qualis_periodicos_from_title(self, title):
         if title != "" and title != None:
-            print '[' + title + ']'
+            if self.__verbose == 1:
+                print '[' + title + ']'
             if title in self.__qualis_periodicos_issn:
                 return self.__qualis_periodicos[ self.__qualis_periodicos_issn[title] ]
         return 'NAO-ENCONTRADO'
@@ -282,16 +284,29 @@ class Score(object):
 
         # If you reach here, the issn is not available in Qualis Periodicos.
         # Try to fetch issns from DOI, alternatively.
-        print 'ISSN not found. Trying to fetch ISSNs from DOI'
-        print self.__nome_completo
-        print self.__numero_identificador
-        print issn
+        if self.__verbose == 1:
+            print 'ISSN ' + issn + ' not found. Trying to fetch ISSNs from DOI'
+        #print self.__nome_completo
+        #print self.__numero_identificador
+        #print issn
+        doi_title = str()
         if 'DOI' in artigo.find('DADOS-BASICOS-DO-ARTIGO').attrib:
             doi = artigo.find('DADOS-BASICOS-DO-ARTIGO').attrib['DOI']
             url = 'http://dx.doi.org/' + doi
             estratos = ['NAO-ENCONTRADO']
-            for i in range(5):
-                r = requests.get(url)
+            tries = 0
+            done = False
+            while not done and tries <= 5:
+                tries += 1
+                r = None
+                try:
+                    r = requests.get(url, timeout=3)
+                except requests.exceptions.RequestException as e:
+                    print e
+
+                if r == None:
+                    continue
+                
                 if r.status_code != 200: # if we've got a error, try again, at most 5 times
                     time.sleep(3.0)
                     continue
@@ -299,24 +314,40 @@ class Score(object):
                 soup = BeautifulSoup(r.text, "lxml")
                 metas = soup.find_all('meta')
                 issns = [ meta.attrs['content'] for meta in metas if 'name' in meta.attrs and meta.attrs['name'].upper() == 'CITATION_ISSN' ]
-                print 'ISSNs found: ', issns
+                if self.__verbose == 1:
+                    print 'ISSNs found: ', issns
+
                 for issn in issns:
                     estratos.append(self.__get_qualis_periodicos_from_issn(issn))
-                break
+
+                titles = [ meta.attrs['content'] for meta in metas if 'name' in meta.attrs and meta.attrs['name'].upper() == 'CITATION_JOURNAL_TITLE' ]
+                if len(titles) > 0:
+                    doi_title = titles[0]
+                    doi_title = unidecode( doi_title.decode("utf-8") )
+                    doi_title = doi_title.strip().upper()
+                done = True
             estrato = min(estratos)
+        else:
+            print 'DOI does not exist.'
 
         # Last try.
-        # We will search the article by the journal title
-        # TODO: we could also use the title given by the DOI response.
-        print 'ISSN still not found. Trying to find Qualis by title...'
+        # We will search the article by the journal title.
+        estratos = ['NAO-ENCONTRADO']
         if estrato == 'NAO-ENCONTRADO':
+            if self.__verbose == 1:
+                print 'Trying to find Qualis by title...'
             title = unidecode( (artigo.find('DETALHAMENTO-DO-ARTIGO').attrib['TITULO-DO-PERIODICO-OU-REVISTA']).decode("utf-8") ).split('(')[0]
             title = title.strip().upper()
-            estrato = self.__get_qualis_periodicos_from_title(title)
-            if estrato == 'NAO-ENCONTRADO':
-                print 'Title not found: ' + title
-            else:
-                print 'Success. Qualis = ' + estrato
+            estratos.append( self.__get_qualis_periodicos_from_title(title) )
+            estratos.append( self.__get_qualis_periodicos_from_title(doi_title) )
+            estrato = min(estratos)
+
+            
+            if self.__verbose == 1:
+                if estrato == 'NAO-ENCONTRADO':
+                    print 'Title not found: ' + title + '\n'
+                else:
+                    print 'Success. Qualis = ' + estrato + '\n'
 
         return estrato
 
@@ -657,6 +688,7 @@ class Score(object):
     def sumario(self):
         print self.__nome_completo.encode("utf-8")
         print "ID Lattes: " + self.__numero_identificador
+        print "Área de avaliação: " + self.__area
         print "POS-DOUTORADO:                       ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['POS-DOUTORADO']).encode("utf-8")
         print "LIVRE-DOCENCIA:                      ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['LIVRE-DOCENCIA']).encode("utf-8")
         print "DOUTORADO:                           ".decode("utf8") + str(self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['DOUTORADO']).encode("utf-8")
@@ -751,7 +783,8 @@ def main():
 
     tree = ET.parse(args.istream)
     root = tree.getroot()
-    score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos[0])
+    score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos[0], args.verbose)
+
     if args.verbose == 1:
         score.sumario()
     else:
