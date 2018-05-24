@@ -21,7 +21,7 @@
 # Author(s): Vicente Helano <vicente.sobrinho@ufca.edu.br>
 #
 
-import sys, time, codecs, re, argparse, csv, requests
+import sys, time, codecs, re, argparse, csv, requests, os
 import xml.etree.ElementTree as ET
 from bs4 import BeautifulSoup
 from unidecode import unidecode
@@ -32,15 +32,16 @@ from Bounds import bounds
 
 class Score(object):
     """Pontuação do Currículo Lattes"""
-    def __init__(self, root, inicio, fim, area, ano_qualis_periodicos, verbose = 0):
+    def __init__(self, root, inicio, fim, area, ano_qualis_periodicos, verbose = 0, debug = False):
         # Período considerado para avaliação
         self.__curriculo = root
         self.__numero_identificador = ''
         self.__nome_completo = ''
         self.__score = 0
         self.__verbose = verbose
-        self.__ano_inicio = inicio
-        self.__ano_fim = fim
+        self.__debug = debug
+        self.__ano_inicio = int(inicio)
+        self.__ano_fim = int(fim)
         self.__area = area
         self.__ano_qualis_periodicos = ano_qualis_periodicos
         self.__qualis_periodicos = {}
@@ -149,7 +150,7 @@ class Score(object):
                 self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
             elif result.attrib['STATUS-DO-CURSO'] == 'CONCLUIDO':
                 self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
-            
+
     def __projetos_de_pesquisa(self):
         dados = self.__curriculo.find('DADOS-GERAIS')
         if dados.find('ATUACOES-PROFISSIONAIS') is None:
@@ -182,7 +183,7 @@ class Score(object):
                     else:
                         if inicio_part < self.__ano_inicio or inicio_part > self.__ano_fim:
                             continue
-                      
+
                     # Ignorar se o proponente não for o coordenador do projeto
                     equipe = (projeto.find('EQUIPE-DO-PROJETO')).find('INTEGRANTES-DO-PROJETO')
                     if equipe.attrib['FLAG-RESPONSAVEL'] != str('SIM'):
@@ -203,7 +204,7 @@ class Score(object):
                             break
                     if not fomento_externo:
                         continue
-                    
+
                     current = self.__tabela_de_qualificacao['PROJETO-DE-PESQUISA'][natureza]
                     weight = weights['PROJETO-DE-PESQUISA'][natureza]
                     bound = bounds['PROJETO-DE-PESQUISA'][natureza]
@@ -246,7 +247,8 @@ class Score(object):
         return area.replace('Ç', 'C')
 
     def __carrega_qualis_periodicos(self):
-        with open('qualis-periodicos-'+str(self.__ano_qualis_periodicos)+'.csv', 'rb') as csvfile:
+        QUALIS_FILENAME = os.path.join(os.path.dirname(__file__), 'qualis-periodicos-'+str(self.__ano_qualis_periodicos)+'.csv')
+        with open(QUALIS_FILENAME, 'r') as csvfile:
             reader = csv.reader(csvfile, delimiter=',', quotechar='"')
             next(reader) # skip headers
 
@@ -269,7 +271,7 @@ class Score(object):
 
     def __get_qualis_periodicos_from_title(self, title):
         if title != "" and title != None:
-            if self.__verbose == 1:
+            if self.__debug == 1:
                 print '[' + title + ']'
             if title in self.__qualis_periodicos_issn:
                 return self.__qualis_periodicos[ self.__qualis_periodicos_issn[title] ]
@@ -284,7 +286,7 @@ class Score(object):
 
         # If you reach here, the issn is not available in Qualis Periodicos.
         # Try to fetch issns from DOI, alternatively.
-        if self.__verbose == 1:
+        if self.__debug == 1:
             print 'ISSN ' + issn + ' not found. Trying to fetch ISSNs from DOI'
         #print self.__nome_completo
         #print self.__numero_identificador
@@ -302,20 +304,21 @@ class Score(object):
                 try:
                     r = requests.get(url, timeout=3)
                 except requests.exceptions.RequestException as e:
-                    print e
+                    if self.__debug == 1:
+                        print('Oops... there\'s a missing Qualis.')
 
                 if r == None:
                     continue
-                
+
                 if r.status_code != 200: # if we've got a error, try again, at most 5 times
                     time.sleep(3.0)
                     continue
 
-                soup = BeautifulSoup(r.text, "lxml")
+                soup = BeautifulSoup(r.text, "html.parser")
                 metas = soup.find_all('meta')
                 issns = [ meta.attrs['content'] for meta in metas if 'name' in meta.attrs and meta.attrs['name'].upper() == 'CITATION_ISSN' ]
-                if self.__verbose == 1:
-                    print 'ISSNs found: ', issns
+                if self.__debug == 1:
+                    print('ISSNs found: ', issns)
 
                 for issn in issns:
                     estratos.append(self.__get_qualis_periodicos_from_issn(issn))
@@ -334,7 +337,7 @@ class Score(object):
         # We will search the article by the journal title.
         estratos = ['NAO-ENCONTRADO']
         if estrato == 'NAO-ENCONTRADO':
-            if self.__verbose == 1:
+            if self.__debug == 1:
                 print 'Trying to find Qualis by title...'
             title = unidecode( (artigo.find('DETALHAMENTO-DO-ARTIGO').attrib['TITULO-DO-PERIODICO-OU-REVISTA']).decode("utf-8") ).split('(')[0]
             title = title.strip().upper()
@@ -343,7 +346,7 @@ class Score(object):
             estrato = min(estratos)
 
             
-            if self.__verbose == 1:
+            if self.__debug == 1:
                 if estrato == 'NAO-ENCONTRADO':
                     print 'Title not found: ' + title + '\n'
                 else:
@@ -682,6 +685,9 @@ class Score(object):
     def get_lattes_id(self):
         return self.__numero_identificador
 
+    def get_detailed_score(self):
+        return self.__tabela_de_qualificacao
+
     def get_score(self):
         return self.__score
 
@@ -767,6 +773,8 @@ def main():
         help="XML file containing a Lattes curriculum")
     parser.add_argument('-v', '--verbose', action='count',
         help="explain what is being done")
+    parser.add_argument('-d', '--debug', action='count',
+        help="show debug messages")
     parser.add_argument('--version', action='version', version='%(prog)s 0.1')
     parser.add_argument('-p', '--qualis-periodicos', dest='ano_qualis_periodicos', default=[2015], metavar='YYYY', type=int, nargs=1,
         help="employ Qualis Periodicos from year YYYY")
@@ -783,7 +791,7 @@ def main():
 
     tree = ET.parse(args.istream)
     root = tree.getroot()
-    score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos[0], args.verbose)
+    score = Score(root, args.since[0], args.until[0], args.area[0], args.ano_qualis_periodicos[0], args.verbose, args.debug)
 
     if args.verbose == 1:
         score.sumario()
