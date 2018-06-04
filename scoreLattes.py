@@ -184,13 +184,23 @@ class Score(object):
                     if natureza not in ['PESQUISA', 'DESENVOLVIMENTO']:
                         continue
 
-                    # Ignorar projeto ou participação em projeto iniciados fora do período estipulado
+                    # INICIO: Ignorar projeto ou participação em projeto iniciados após o período estipulado
                     if projeto.attrib['ANO-INICIO'] != "":
-                        if int(projeto.attrib['ANO-INICIO']) < self.__ano_inicio or int(projeto.attrib['ANO-INICIO']) > self.__ano_fim:
+                        if int(projeto.attrib['ANO-INICIO']) > self.__ano_fim:
                             continue
                     else:
-                        if inicio_part < self.__ano_inicio or inicio_part > self.__ano_fim:
+                        if inicio_part > self.__ano_fim:
                             continue
+
+                    # FIM: Ignorar projeto ou participação em projeto finalizados antes do período estipulado
+                    if projeto.attrib['ANO-FIM'] != "":
+                        if int(projeto.attrib['ANO-FIM']) < self.__ano_inicio:
+                            continue
+                    else:
+                        if participacao.attrib['ANO-FIM'] != "":
+                            fim_part = int(participacao.attrib['ANO-FIM'])
+                            if fim_part < self.__ano_inicio:
+                                continue
 
                     # Ignorar se o proponente não for o coordenador do projeto
                     equipe = (projeto.find('EQUIPE-DO-PROJETO')).find('INTEGRANTES-DO-PROJETO')
