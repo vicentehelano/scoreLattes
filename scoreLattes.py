@@ -150,6 +150,14 @@ class Score(object):
                 self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
             elif result.attrib['STATUS-DO-CURSO'] == 'CONCLUIDO':
                 self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO'][key] = value
+        
+        # Handle master of professional studies
+        result = formacao.find('MESTRADO-PROFISSIONALIZANTE')
+        if result is None:
+            return
+
+        if result.attrib['STATUS-DO-CURSO'] == 'CONCLUIDO':
+            self.__tabela_de_qualificacao['FORMACAO-ACADEMICA-TITULACAO']['MESTRADO'] = weights['FORMACAO-ACADEMICA-TITULACAO']['MESTRADO']
 
     def __projetos_de_pesquisa(self):
         dados = self.__curriculo.find('DADOS-GERAIS')
