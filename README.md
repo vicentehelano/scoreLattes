@@ -1,5 +1,5 @@
 # scoreLattes
-Computes a score for an XML Lattes curriculum.
+Measuring academic performance from Lattes curricula.
 
 ## Usage
 scoreLattes.py [-h] [-v] [--version] [-p YYYY] [-s YYYY] [-u YYYY] "AREA" FILE
