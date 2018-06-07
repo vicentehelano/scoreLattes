@@ -550,7 +550,7 @@ class Score(object):
         if producao is None:
             return
 
-        if self.__area == 'ARTES_MUSICA': # only counts for arts and musics projects
+        if self.__area == 'ARTES': # only counts for arts and musics projects
             self.__producao_artistica_cultural(producao)
         self.__orientacoes_concluidas(producao)
 
